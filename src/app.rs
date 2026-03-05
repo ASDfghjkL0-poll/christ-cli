@@ -2,7 +2,7 @@ use crate::api::Resolver;
 use crate::data::kjv;
 use crate::store::state as session;
 use crate::ui::banner::{self, BannerState};
-use crate::ui::browser::{self, BrowserState, SearchMode};
+use crate::ui::browser::{self, BrowserState, SearchMode, TRANSLATIONS};
 use crate::ui::theme::{self, ThemeName};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::widgets::ListState;
@@ -60,9 +60,10 @@ impl App {
             1
         };
 
+        let translation = &saved.translation;
         let initial_chapter = self
             .resolver
-            .get_chapter(book_name, chapter_num, "KJV")
+            .get_chapter(book_name, chapter_num, translation)
             .await
             .ok();
 
@@ -206,6 +207,35 @@ impl App {
                     return;
                 }
 
+                // Translation picker mode
+                if state.translation_picker {
+                    match key {
+                        KeyCode::Esc | KeyCode::Char('v') => {
+                            state.translation_picker = false;
+                        }
+                        KeyCode::Up => {
+                            let i = state.translation_list.selected().unwrap_or(0);
+                            if i > 0 {
+                                state.translation_list.select(Some(i - 1));
+                            }
+                        }
+                        KeyCode::Down => {
+                            let i = state.translation_list.selected().unwrap_or(0);
+                            if i < TRANSLATIONS.len() - 1 {
+                                state.translation_list.select(Some(i + 1));
+                            }
+                        }
+                        KeyCode::Enter => {
+                            let changed = state.pick_translation();
+                            if changed {
+                                self.load_chapter().await;
+                            }
+                        }
+                        _ => {}
+                    }
+                    return;
+                }
+
                 // Normal browser mode
                 if key == KeyCode::Char('q') {
                     if self.quit_pending.is_some() {
@@ -227,6 +257,9 @@ impl App {
                     }
                     KeyCode::Char('t') => {
                         self.theme_name = self.theme_name.next();
+                    }
+                    KeyCode::Char('v') => {
+                        state.open_translation_picker();
                     }
                     KeyCode::Left => {
                         state.prev_panel();
@@ -284,8 +317,9 @@ impl App {
             state.loading = true;
             let book = state.selected_book_name();
             let chapter = state.selected_chapter;
+            let translation = state.translation.clone();
 
-            match self.resolver.get_chapter(book, chapter, "KJV").await {
+            match self.resolver.get_chapter(book, chapter, &translation).await {
                 Ok(ch) => {
                     state.current_chapter = Some(ch);
                     state.scripture_scroll = 0;

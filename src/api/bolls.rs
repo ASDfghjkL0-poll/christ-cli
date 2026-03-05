@@ -44,17 +44,16 @@ impl BollsProvider {
             "KJV" => "KJV",
             "WEB" => "WEB",
             "ASV" => "ASV",
-            "BBE" => "BBE",
-            "DARBY" => "DARBY",
             "YLT" => "YLT",
             "ESV" => "ESV",
             "NIV" => "NIV",
             "NLT" => "NLT",
             "NASB" => "NASB",
             "NKJV" => "NKJV",
+            "BSB" => "BSB",
+            "NET" => "NET",
+            "MSG" => "MSG",
             other => {
-                // Return as-is for unknown translations
-                // Leak is fine here since these are user-provided and few in number
                 Box::leak(other.to_string().into_boxed_str())
             }
         }
@@ -220,17 +219,29 @@ impl BollsProvider {
     }
 }
 
-/// Strip basic HTML tags from Bolls API responses.
+/// Strip HTML tags and Strong's concordance numbers (<S>1234</S>) from Bolls API responses.
 fn clean_html(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
     let mut in_tag = false;
+    let mut in_strongs = false;
+    let mut tag_name = String::new();
 
     for ch in text.chars() {
         if ch == '<' {
             in_tag = true;
+            tag_name.clear();
         } else if ch == '>' {
             in_tag = false;
-        } else if !in_tag {
+            let tag_upper = tag_name.to_uppercase();
+            if tag_upper == "S" {
+                in_strongs = true;
+            } else if tag_upper == "/S" {
+                in_strongs = false;
+            }
+            tag_name.clear();
+        } else if in_tag {
+            tag_name.push(ch);
+        } else if !in_strongs {
             result.push(ch);
         }
     }

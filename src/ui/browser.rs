@@ -29,6 +29,26 @@ pub enum SearchMode {
     },
 }
 
+pub struct TranslationInfo {
+    pub code: &'static str,
+    pub name: &'static str,
+    pub offline: bool,
+}
+
+pub const TRANSLATIONS: &[TranslationInfo] = &[
+    TranslationInfo { code: "KJV", name: "King James Version", offline: true },
+    TranslationInfo { code: "WEB", name: "World English Bible", offline: false },
+    TranslationInfo { code: "NKJV", name: "New King James Version", offline: false },
+    TranslationInfo { code: "ESV", name: "English Standard Version", offline: false },
+    TranslationInfo { code: "NIV", name: "New International Version", offline: false },
+    TranslationInfo { code: "NLT", name: "New Living Translation", offline: false },
+    TranslationInfo { code: "NASB", name: "New American Standard Bible", offline: false },
+    TranslationInfo { code: "BSB", name: "Berean Standard Bible", offline: false },
+    TranslationInfo { code: "NET", name: "New English Translation", offline: false },
+    TranslationInfo { code: "MSG", name: "The Message", offline: false },
+    TranslationInfo { code: "YLT", name: "Young's Literal Translation", offline: false },
+];
+
 pub struct BrowserState {
     pub active_panel: Panel,
     pub book_list: ListState,
@@ -39,6 +59,9 @@ pub struct BrowserState {
     pub current_chapter: Option<Chapter>,
     pub loading: bool,
     pub search: SearchMode,
+    pub translation: String,
+    pub translation_picker: bool,
+    pub translation_list: ListState,
 }
 
 impl BrowserState {
@@ -58,6 +81,9 @@ impl BrowserState {
             current_chapter: None,
             loading: false,
             search: SearchMode::Off,
+            translation: "KJV".to_string(),
+            translation_picker: false,
+            translation_list: ListState::default(),
         }
     }
 
@@ -77,6 +103,9 @@ impl BrowserState {
             1 => Panel::Chapters,
             _ => Panel::Scripture,
         };
+        if !saved.translation.is_empty() {
+            self.translation = saved.translation.clone();
+        }
     }
 
     /// Snapshot current state for persistence.
@@ -90,8 +119,29 @@ impl BrowserState {
                 Panel::Chapters => 1,
                 Panel::Scripture => 2,
             },
+            translation: self.translation.clone(),
             ..Default::default()
         }
+    }
+
+    /// Open translation picker, selecting the current translation.
+    pub fn open_translation_picker(&mut self) {
+        let current_idx = TRANSLATIONS
+            .iter()
+            .position(|t| t.code.eq_ignore_ascii_case(&self.translation))
+            .unwrap_or(0);
+        self.translation_list.select(Some(current_idx));
+        self.translation_picker = true;
+    }
+
+    /// Select the translation from the picker. Returns true if translation changed.
+    pub fn pick_translation(&mut self) -> bool {
+        let idx = self.translation_list.selected().unwrap_or(0);
+        let new_trans = TRANSLATIONS[idx].code.to_string();
+        let changed = !new_trans.eq_ignore_ascii_case(&self.translation);
+        self.translation = new_trans;
+        self.translation_picker = false;
+        changed
     }
 
     pub fn selected_book_name(&self) -> &'static str {
@@ -267,13 +317,20 @@ pub fn render_browser(
     render_books_panel(frame, panels[0], state, theme);
     render_chapters_panel(frame, panels[1], state, theme);
 
+    let translation = state.translation.clone();
+
     if has_search_input {
         render_search_results_panel(frame, panels[2], state, theme);
         render_search_input(frame, main_and_status[1], state, theme);
-        render_status_bar(frame, main_and_status[2], theme, theme_name);
+        render_status_bar(frame, main_and_status[2], theme, theme_name, &translation);
     } else {
         render_scripture_panel(frame, panels[2], state, theme);
-        render_status_bar(frame, main_and_status[1], theme, theme_name);
+        render_status_bar(frame, main_and_status[1], theme, theme_name, &translation);
+    }
+
+    // Translation picker popup
+    if state.translation_picker {
+        render_translation_picker(frame, area, state, theme);
     }
 
     // Quit confirmation popup
@@ -610,13 +667,14 @@ fn render_search_input(frame: &mut Frame, area: Rect, state: &BrowserState, them
     frame.render_widget(input, area);
 }
 
-fn render_status_bar(frame: &mut Frame, area: Rect, theme: &Theme, theme_name: ThemeName) {
+fn render_status_bar(frame: &mut Frame, area: Rect, theme: &Theme, theme_name: ThemeName, translation: &str) {
     let keybinds = vec![
         ("\u{2190}\u{2192}", "panels"),
         ("\u{2191}\u{2193}", "navigate"),
         ("Enter", "select"),
         ("/", "search"),
         ("t", theme_name.label()),
+        ("v", translation),
         ("qq", "quit"),
     ];
 
@@ -639,6 +697,68 @@ fn render_status_bar(frame: &mut Frame, area: Rect, theme: &Theme, theme_name: T
 
     let bar = Paragraph::new(Line::from(spans)).style(Style::default().bg(theme.bg));
     frame.render_widget(bar, area);
+}
+
+fn render_translation_picker(
+    frame: &mut Frame,
+    area: Rect,
+    state: &mut BrowserState,
+    theme: &Theme,
+) {
+    let popup_width = 46u16;
+    let popup_height = (TRANSLATIONS.len() as u16 + 4).min(area.height.saturating_sub(4));
+
+    let horizontal = Layout::horizontal([Constraint::Length(popup_width)])
+        .flex(Flex::Center)
+        .split(area);
+    let vertical = Layout::vertical([Constraint::Length(popup_height)])
+        .flex(Flex::Center)
+        .split(horizontal[0]);
+    let popup_area = vertical[0];
+
+    frame.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .title(Span::styled(
+            " Select Translation ",
+            Style::default().fg(theme.accent).bold(),
+        ))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.border_active))
+        .padding(Padding::horizontal(1))
+        .style(Style::default().bg(theme.surface));
+
+    let items: Vec<ListItem> = TRANSLATIONS
+        .iter()
+        .enumerate()
+        .map(|(i, t)| {
+            let is_selected = Some(i) == state.translation_list.selected();
+            let is_current = t.code.eq_ignore_ascii_case(&state.translation);
+            let style = if is_selected {
+                Style::default()
+                    .fg(theme.accent)
+                    .bg(theme.highlight_bg)
+                    .add_modifier(Modifier::BOLD)
+            } else if is_current {
+                Style::default().fg(theme.accent_soft).bold()
+            } else {
+                Style::default().fg(theme.text)
+            };
+
+            let suffix = if t.offline { " (offline)" } else { "" };
+            let marker = if is_current { " \u{2713}" } else { "" };
+            ListItem::new(Line::from(vec![
+                Span::styled(format!("{:<6}", t.code), style),
+                Span::styled(t.name, style),
+                Span::styled(suffix, Style::default().fg(theme.text_muted)),
+                Span::styled(marker, Style::default().fg(theme.search_match).bold()),
+            ]))
+        })
+        .collect();
+
+    let list = List::new(items).block(block).highlight_symbol("  ");
+    frame.render_stateful_widget(list, popup_area, &mut state.translation_list);
 }
 
 fn render_quit_popup(frame: &mut Frame, area: Rect, theme: &Theme) {

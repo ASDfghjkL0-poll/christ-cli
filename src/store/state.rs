@@ -12,6 +12,12 @@ pub struct SessionState {
     pub active_panel: u8, // 0=Books, 1=Chapters, 2=Scripture
     #[serde(default)]
     pub theme: ThemeName,
+    #[serde(default = "default_translation")]
+    pub translation: String,
+}
+
+fn default_translation() -> String {
+    "KJV".to_string()
 }
 
 fn state_path() -> Option<PathBuf> {
