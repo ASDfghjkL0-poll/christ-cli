@@ -118,7 +118,7 @@ jobs:
           mkdir -p npm-pkg/bin
           cp npm/package.json npm-pkg/
           cp npm/install.js npm-pkg/
-          cp npm/run.js npm-pkg/bin/
+          cp npm/bin/run.js npm-pkg/bin/
           cd npm-pkg
           # Set version from git tag
           VERSION=${GITHUB_REF#refs/tags/v}
