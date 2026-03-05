@@ -26,25 +26,13 @@ Built with Rust. Single binary. Works offline with bundled KJV.
 
 ## Install
 
-**curl** (macOS / Linux):
-```sh
-curl -fsSL https://raw.githubusercontent.com/whoisyurii/christ-cli/main/install.sh | sh
-```
-
-**npm**:
 ```sh
 npm install -g christ-cli
 ```
 
-**Homebrew** (macOS / Linux):
+Or with curl:
 ```sh
-brew tap whoisyurii/tap
-brew install christ-cli
-```
-
-**Cargo** (from source):
-```sh
-cargo install christ-cli
+curl -fsSL https://raw.githubusercontent.com/whoisyurii/christ-cli/main/install.sh | sh
 ```
 
 ## Usage

@@ -40,7 +40,7 @@ lto = "thin"
 [workspace.metadata.dist]
 cargo-dist-version = "0.31.0"
 ci = "github"
-installers = ["shell", "homebrew", "npm"]
+installers = ["shell", "npm"]
 targets = [
     "aarch64-apple-darwin",
     "x86_64-apple-darwin",
@@ -49,5 +49,3 @@ targets = [
     "x86_64-pc-windows-msvc",
 ]
 install-path = "CARGO_HOME"
-tap = "whoisyurii/homebrew-tap"
-publish-jobs = ["homebrew"]
