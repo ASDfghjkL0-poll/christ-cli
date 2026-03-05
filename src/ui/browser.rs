@@ -1,0 +1,482 @@
+use crate::api::types::Chapter;
+use crate::data::books::BOOKS;
+use crate::ui::theme::THEME;
+use ratatui::{
+    layout::{Alignment, Constraint, Flex, Layout, Rect},
+    style::{Modifier, Style, Stylize},
+    text::{Line, Span},
+    widgets::{
+        Block, BorderType, Borders, Clear, List, ListItem, ListState, Padding, Paragraph,
+        Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
+    },
+    Frame,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Panel {
+    Books,
+    Chapters,
+    Scripture,
+}
+
+pub struct BrowserState {
+    pub active_panel: Panel,
+    pub book_list: ListState,
+    pub chapter_list: ListState,
+    pub scripture_scroll: u16,
+    pub selected_book_idx: usize,
+    pub selected_chapter: u32,
+    pub current_chapter: Option<Chapter>,
+    pub loading: bool,
+}
+
+impl BrowserState {
+    pub fn new() -> Self {
+        let mut book_list = ListState::default();
+        book_list.select(Some(0));
+        let mut chapter_list = ListState::default();
+        chapter_list.select(Some(0));
+
+        Self {
+            active_panel: Panel::Books,
+            book_list,
+            chapter_list,
+            scripture_scroll: 0,
+            selected_book_idx: 0,
+            selected_chapter: 1,
+            current_chapter: None,
+            loading: false,
+        }
+    }
+
+    /// Restore from a saved session state.
+    pub fn restore(&mut self, saved: &crate::store::state::SessionState) {
+        let book_idx = saved.book_index.min(BOOKS.len() - 1);
+        self.selected_book_idx = book_idx;
+        self.book_list.select(Some(book_idx));
+
+        let max_ch = BOOKS[book_idx].chapters;
+        self.selected_chapter = saved.chapter.clamp(1, max_ch);
+        self.chapter_list.select(Some((self.selected_chapter - 1) as usize));
+
+        self.scripture_scroll = saved.scroll_position;
+        self.active_panel = match saved.active_panel {
+            0 => Panel::Books,
+            1 => Panel::Chapters,
+            _ => Panel::Scripture,
+        };
+    }
+
+    /// Snapshot current state for persistence.
+    pub fn snapshot(&self) -> crate::store::state::SessionState {
+        crate::store::state::SessionState {
+            book_index: self.selected_book_idx,
+            chapter: self.selected_chapter,
+            scroll_position: self.scripture_scroll,
+            active_panel: match self.active_panel {
+                Panel::Books => 0,
+                Panel::Chapters => 1,
+                Panel::Scripture => 2,
+            },
+        }
+    }
+
+    pub fn selected_book_name(&self) -> &'static str {
+        BOOKS[self.selected_book_idx].name
+    }
+
+    pub fn selected_book_chapters(&self) -> u32 {
+        BOOKS[self.selected_book_idx].chapters
+    }
+
+    /// Move to the next panel (right arrow). If on Chapters, also selects and loads.
+    pub fn next_panel_or_select(&mut self) -> bool {
+        match self.active_panel {
+            Panel::Books => {
+                self.chapter_list.select(Some(0));
+                self.active_panel = Panel::Chapters;
+                false
+            }
+            Panel::Chapters => {
+                let ch = self.chapter_list.selected().unwrap_or(0) as u32 + 1;
+                self.selected_chapter = ch;
+                self.scripture_scroll = 0;
+                self.active_panel = Panel::Scripture;
+                true // Signal to load chapter
+            }
+            Panel::Scripture => false, // Already rightmost
+        }
+    }
+
+    pub fn prev_panel(&mut self) {
+        self.active_panel = match self.active_panel {
+            Panel::Books => Panel::Books, // Already leftmost
+            Panel::Chapters => Panel::Books,
+            Panel::Scripture => Panel::Chapters,
+        };
+    }
+
+    pub fn move_up(&mut self) {
+        match self.active_panel {
+            Panel::Books => {
+                let i = self.book_list.selected().unwrap_or(0);
+                if i > 0 {
+                    self.book_list.select(Some(i - 1));
+                    self.selected_book_idx = i - 1;
+                }
+            }
+            Panel::Chapters => {
+                let i = self.chapter_list.selected().unwrap_or(0);
+                if i > 0 {
+                    self.chapter_list.select(Some(i - 1));
+                }
+            }
+            Panel::Scripture => {
+                if self.scripture_scroll > 0 {
+                    self.scripture_scroll -= 1;
+                }
+            }
+        }
+    }
+
+    pub fn move_down(&mut self) {
+        match self.active_panel {
+            Panel::Books => {
+                let i = self.book_list.selected().unwrap_or(0);
+                if i < BOOKS.len() - 1 {
+                    self.book_list.select(Some(i + 1));
+                    self.selected_book_idx = i + 1;
+                }
+            }
+            Panel::Chapters => {
+                let i = self.chapter_list.selected().unwrap_or(0);
+                let max = self.selected_book_chapters() as usize;
+                if i < max - 1 {
+                    self.chapter_list.select(Some(i + 1));
+                }
+            }
+            Panel::Scripture => {
+                self.scripture_scroll += 1;
+            }
+        }
+    }
+
+    pub fn select_current(&mut self) -> bool {
+        match self.active_panel {
+            Panel::Books => {
+                self.chapter_list.select(Some(0));
+                self.active_panel = Panel::Chapters;
+                false
+            }
+            Panel::Chapters => {
+                let ch = self.chapter_list.selected().unwrap_or(0) as u32 + 1;
+                self.selected_chapter = ch;
+                self.scripture_scroll = 0;
+                self.active_panel = Panel::Scripture;
+                true
+            }
+            Panel::Scripture => false,
+        }
+    }
+}
+
+pub fn render_browser(
+    frame: &mut Frame,
+    area: Rect,
+    state: &mut BrowserState,
+    quit_pending: bool,
+) {
+    // Outer border
+    let outer_block = Block::default()
+        .title(Line::from(vec![
+            Span::styled(" christ", Style::default().fg(THEME.accent).bold()),
+            Span::styled("-cli ", Style::default().fg(THEME.text_dim)),
+        ]))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(THEME.border))
+        .style(Style::default().bg(THEME.bg));
+
+    let inner = outer_block.inner(area);
+    frame.render_widget(outer_block, area);
+
+    // Layout: status bar at bottom
+    let main_and_status = Layout::vertical([
+        Constraint::Min(1),    // Main content
+        Constraint::Length(1), // Status bar
+    ])
+    .split(inner);
+
+    // Three panels
+    let panels = Layout::horizontal([
+        Constraint::Percentage(22), // Books
+        Constraint::Percentage(13), // Chapters
+        Constraint::Percentage(65), // Scripture
+    ])
+    .split(main_and_status[0]);
+
+    render_books_panel(frame, panels[0], state);
+    render_chapters_panel(frame, panels[1], state);
+    render_scripture_panel(frame, panels[2], state);
+    render_status_bar(frame, main_and_status[1]);
+
+    // Quit confirmation popup
+    if quit_pending {
+        render_quit_popup(frame, area);
+    }
+}
+
+fn panel_border_style(active: bool) -> Style {
+    if active {
+        Style::default().fg(THEME.border_active)
+    } else {
+        Style::default().fg(THEME.border)
+    }
+}
+
+fn render_books_panel(frame: &mut Frame, area: Rect, state: &mut BrowserState) {
+    let is_active = state.active_panel == Panel::Books;
+    let block = Block::default()
+        .title(Span::styled(
+            " Books ",
+            Style::default()
+                .fg(if is_active { THEME.accent } else { THEME.text_dim })
+                .bold(),
+        ))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(panel_border_style(is_active))
+        .padding(Padding::horizontal(1))
+        .style(Style::default().bg(THEME.surface));
+
+    let items: Vec<ListItem> = BOOKS
+        .iter()
+        .enumerate()
+        .map(|(i, book)| {
+            let style = if Some(i) == state.book_list.selected() {
+                Style::default()
+                    .fg(THEME.accent)
+                    .bg(THEME.highlight_bg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(THEME.text)
+            };
+            ListItem::new(Span::styled(book.name, style))
+        })
+        .collect();
+
+    let list = List::new(items).block(block).highlight_symbol("  ");
+
+    frame.render_stateful_widget(list, area, &mut state.book_list);
+}
+
+fn render_chapters_panel(frame: &mut Frame, area: Rect, state: &mut BrowserState) {
+    let is_active = state.active_panel == Panel::Chapters;
+    let block = Block::default()
+        .title(Span::styled(
+            " Ch ",
+            Style::default()
+                .fg(if is_active { THEME.accent } else { THEME.text_dim })
+                .bold(),
+        ))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(panel_border_style(is_active))
+        .padding(Padding::horizontal(1))
+        .style(Style::default().bg(THEME.surface));
+
+    let chapter_count = state.selected_book_chapters();
+    let items: Vec<ListItem> = (1..=chapter_count)
+        .map(|ch| {
+            let is_selected = Some(ch as usize - 1) == state.chapter_list.selected();
+            let style = if is_selected {
+                Style::default()
+                    .fg(THEME.accent)
+                    .bg(THEME.highlight_bg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(THEME.text)
+            };
+            ListItem::new(Span::styled(format!("{}", ch), style))
+        })
+        .collect();
+
+    let list = List::new(items).block(block).highlight_symbol("  ");
+
+    frame.render_stateful_widget(list, area, &mut state.chapter_list);
+}
+
+fn render_scripture_panel(frame: &mut Frame, area: Rect, state: &mut BrowserState) {
+    let is_active = state.active_panel == Panel::Scripture;
+
+    let title = if let Some(ref ch) = state.current_chapter {
+        format!(" {} {} ", ch.book, ch.chapter)
+    } else {
+        " Scripture ".to_string()
+    };
+
+    let block = Block::default()
+        .title(Span::styled(
+            title,
+            Style::default()
+                .fg(if is_active { THEME.accent } else { THEME.text_dim })
+                .bold(),
+        ))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(panel_border_style(is_active))
+        .padding(Padding::new(2, 2, 1, 1))
+        .style(Style::default().bg(THEME.surface));
+
+    if state.loading {
+        let loading = Paragraph::new(Line::from(Span::styled(
+            "Loading...",
+            Style::default().fg(THEME.text_dim),
+        )))
+        .block(block)
+        .alignment(Alignment::Center);
+        frame.render_widget(loading, area);
+        return;
+    }
+
+    if let Some(ref chapter) = state.current_chapter {
+        let lines: Vec<Line> = chapter
+            .verses
+            .iter()
+            .flat_map(|v| {
+                let verse_line = Line::from(vec![
+                    Span::styled(
+                        format!(" {} ", v.verse),
+                        Style::default().fg(THEME.text_muted),
+                    ),
+                    Span::styled(&v.text, Style::default().fg(THEME.text)),
+                ]);
+                vec![verse_line, Line::default()]
+            })
+            .collect();
+
+        let inner = block.inner(area);
+        let visible_height = inner.height;
+        let wrap_width = inner.width as usize;
+
+        // Calculate actual wrapped content height
+        let content_height: u16 = lines
+            .iter()
+            .map(|line| {
+                if line.spans.is_empty() {
+                    return 1; // empty line
+                }
+                let line_width: usize = line.spans.iter().map(|s| s.content.len()).sum();
+                if wrap_width == 0 {
+                    1
+                } else {
+                    ((line_width as f64 / wrap_width as f64).ceil() as u16).max(1)
+                }
+            })
+            .sum();
+
+        // Clamp scroll
+        if content_height > visible_height {
+            let max_scroll = content_height - visible_height;
+            if state.scripture_scroll > max_scroll {
+                state.scripture_scroll = max_scroll;
+            }
+        } else {
+            state.scripture_scroll = 0;
+        }
+
+        let paragraph = Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false })
+            .scroll((state.scripture_scroll, 0));
+
+        frame.render_widget(paragraph, area);
+
+        // Scrollbar
+        if content_height > visible_height {
+            let max_scroll = (content_height - visible_height) as usize;
+            let mut scrollbar_state = ScrollbarState::new(max_scroll)
+                .position(state.scripture_scroll as usize);
+            let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                .style(Style::default().fg(THEME.border));
+            frame.render_stateful_widget(scrollbar, inner, &mut scrollbar_state);
+        }
+    } else {
+        let hint = Paragraph::new(vec![
+            Line::default(),
+            Line::default(),
+            Line::from(Span::styled(
+                "Select a book and chapter to begin reading",
+                Style::default().fg(THEME.text_dim),
+            )),
+            Line::default(),
+            Line::from(Span::styled(
+                "Use arrow keys to navigate, Enter to select",
+                Style::default().fg(THEME.text_muted),
+            )),
+        ])
+        .block(block)
+        .alignment(Alignment::Center);
+        frame.render_widget(hint, area);
+    }
+}
+
+fn render_status_bar(frame: &mut Frame, area: Rect) {
+    let keybinds = vec![
+        ("\u{2190}\u{2192}", "panels"),
+        ("\u{2191}\u{2193}", "navigate"),
+        ("Enter", "select"),
+        ("qq", "quit"),
+    ];
+
+    let spans: Vec<Span> = keybinds
+        .iter()
+        .flat_map(|(key, desc)| {
+            vec![
+                Span::styled(
+                    format!(" {} ", key),
+                    Style::default().fg(THEME.accent_soft).bold(),
+                ),
+                Span::styled(
+                    format!("{} ", desc),
+                    Style::default().fg(THEME.text_muted),
+                ),
+                Span::styled("  ", Style::default()),
+            ]
+        })
+        .collect();
+
+    let bar = Paragraph::new(Line::from(spans)).style(Style::default().bg(THEME.bg));
+    frame.render_widget(bar, area);
+}
+
+fn render_quit_popup(frame: &mut Frame, area: Rect) {
+    let popup_width = 32u16;
+    let popup_height = 3u16;
+
+    let horizontal = Layout::horizontal([Constraint::Length(popup_width)])
+        .flex(Flex::Center)
+        .split(area);
+    let vertical = Layout::vertical([Constraint::Length(popup_height)])
+        .flex(Flex::Center)
+        .split(horizontal[0]);
+    let popup_area = vertical[0];
+
+    frame.render_widget(Clear, popup_area);
+
+    let popup = Paragraph::new(Line::from(vec![
+        Span::styled("  Press ", Style::default().fg(THEME.text_dim)),
+        Span::styled("q", Style::default().fg(THEME.accent).bold()),
+        Span::styled(" again to quit  ", Style::default().fg(THEME.text_dim)),
+    ]))
+    .alignment(Alignment::Center)
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(THEME.border_active))
+            .style(Style::default().bg(THEME.surface)),
+    );
+
+    frame.render_widget(popup, popup_area);
+}

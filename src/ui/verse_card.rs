@@ -1,0 +1,76 @@
+use crate::api::types::Verse;
+use crate::ui::theme::THEME;
+use ratatui::{
+    layout::{Alignment, Constraint, Layout, Rect},
+    style::{Style, Stylize},
+    text::{Line, Span},
+    widgets::{Block, Borders, Padding, Paragraph, Wrap},
+    Frame,
+};
+
+/// Render a single verse or range of verses in a beautiful framed card.
+pub fn render_verse_card(frame: &mut Frame, area: Rect, verses: &[Verse]) {
+    if verses.is_empty() {
+        return;
+    }
+
+    let first = &verses[0];
+    let reference = if verses.len() == 1 {
+        first.reference()
+    } else {
+        let last = &verses[verses.len() - 1];
+        format!(
+            "{} {}:{}-{}",
+            first.book, first.chapter, first.verse, last.verse
+        )
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(ratatui::widgets::BorderType::Rounded)
+        .border_style(Style::default().fg(THEME.border_active))
+        .padding(Padding::new(2, 2, 1, 1))
+        .style(Style::default().bg(THEME.surface));
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let chunks = Layout::vertical([
+        Constraint::Length(2), // Reference header
+        Constraint::Min(1),   // Verse text
+        Constraint::Length(1), // Translation badge
+    ])
+    .split(inner);
+
+    // Reference header
+    let header = Paragraph::new(Line::from(vec![
+        Span::styled(&reference, Style::default().fg(THEME.accent).bold()),
+    ]))
+    .alignment(Alignment::Center);
+    frame.render_widget(header, chunks[0]);
+
+    // Verse text
+    let text_lines: Vec<Line> = verses
+        .iter()
+        .map(|v| {
+            Line::from(vec![
+                Span::styled(
+                    format!("{} ", v.verse),
+                    Style::default().fg(THEME.text_dim),
+                ),
+                Span::styled(&v.text, Style::default().fg(THEME.text)),
+            ])
+        })
+        .collect();
+
+    let text = Paragraph::new(text_lines).wrap(Wrap { trim: true });
+    frame.render_widget(text, chunks[1]);
+
+    // Translation badge
+    let badge = Paragraph::new(Line::from(vec![Span::styled(
+        format!(" {} ", first.translation),
+        Style::default().fg(THEME.text_muted),
+    )]))
+    .alignment(Alignment::Right);
+    frame.render_widget(badge, chunks[2]);
+}
