@@ -1,3 +1,4 @@
+use crate::ui::theme::ThemeName;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -9,6 +10,8 @@ pub struct SessionState {
     pub chapter: u32,
     pub scroll_position: u16,
     pub active_panel: u8, // 0=Books, 1=Chapters, 2=Scripture
+    #[serde(default)]
+    pub theme: ThemeName,
 }
 
 fn state_path() -> Option<PathBuf> {

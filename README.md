@@ -7,7 +7,7 @@ A beautiful Bible TUI for Christian developers. Read Scripture in your terminal.
            ████║
            ████║
   ██████████████████████╗
-  ╚════════████╔═══════╝
+  ╚════════████╔════════╝
            ████║
            ████║
            ████║

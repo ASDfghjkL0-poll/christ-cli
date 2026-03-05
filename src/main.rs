@@ -9,6 +9,7 @@ mod ui;
 
 use crate::api::Resolver;
 use crate::data::reference;
+use crate::ui::theme;
 use crate::ui::verse_card;
 use clap::Parser;
 use cli::{Cli, Commands};
@@ -62,6 +63,11 @@ async fn run_intro() -> Result<(), Box<dyn std::error::Error>> {
     ratatui::restore();
     result?;
     Ok(())
+}
+
+fn load_theme() -> theme::Theme {
+    let saved = store::state::load();
+    theme::get_theme(saved.theme)
 }
 
 async fn cmd_read(ref_str: &str, translation: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -189,13 +195,14 @@ async fn render_verse_tui(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 
+    let current_theme = load_theme();
     let mut terminal = ratatui::init();
 
     loop {
         terminal.draw(|frame| {
             let area = frame.area();
             let block = ratatui::widgets::Block::default()
-                .style(ratatui::style::Style::default().bg(ui::theme::THEME.bg));
+                .style(ratatui::style::Style::default().bg(current_theme.bg));
             frame.render_widget(block, area);
 
             // Center the verse card
@@ -207,13 +214,13 @@ async fn render_verse_tui(
                 width: card_width,
                 height: card_height,
             };
-            verse_card::render_verse_card(frame, card_area, verses);
+            verse_card::render_verse_card(frame, card_area, verses, &current_theme);
 
             // Hint at bottom
             let hint = ratatui::widgets::Paragraph::new(ratatui::text::Line::from(
                 ratatui::text::Span::styled(
                     " Press q or Esc to exit ",
-                    ratatui::style::Style::default().fg(ui::theme::THEME.text_muted),
+                    ratatui::style::Style::default().fg(current_theme.text_muted),
                 ),
             ))
             .alignment(ratatui::layout::Alignment::Center);

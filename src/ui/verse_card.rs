@@ -1,5 +1,5 @@
 use crate::api::types::Verse;
-use crate::ui::theme::THEME;
+use crate::ui::theme::Theme;
 use ratatui::{
     layout::{Alignment, Constraint, Layout, Rect},
     style::{Style, Stylize},
@@ -9,7 +9,7 @@ use ratatui::{
 };
 
 /// Render a single verse or range of verses in a beautiful framed card.
-pub fn render_verse_card(frame: &mut Frame, area: Rect, verses: &[Verse]) {
+pub fn render_verse_card(frame: &mut Frame, area: Rect, verses: &[Verse], theme: &Theme) {
     if verses.is_empty() {
         return;
     }
@@ -28,9 +28,9 @@ pub fn render_verse_card(frame: &mut Frame, area: Rect, verses: &[Verse]) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(ratatui::widgets::BorderType::Rounded)
-        .border_style(Style::default().fg(THEME.border_active))
+        .border_style(Style::default().fg(theme.border_active))
         .padding(Padding::new(2, 2, 1, 1))
-        .style(Style::default().bg(THEME.surface));
+        .style(Style::default().bg(theme.surface));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -44,7 +44,7 @@ pub fn render_verse_card(frame: &mut Frame, area: Rect, verses: &[Verse]) {
 
     // Reference header
     let header = Paragraph::new(Line::from(vec![
-        Span::styled(&reference, Style::default().fg(THEME.accent).bold()),
+        Span::styled(&reference, Style::default().fg(theme.accent).bold()),
     ]))
     .alignment(Alignment::Center);
     frame.render_widget(header, chunks[0]);
@@ -56,9 +56,9 @@ pub fn render_verse_card(frame: &mut Frame, area: Rect, verses: &[Verse]) {
             Line::from(vec![
                 Span::styled(
                     format!("{} ", v.verse),
-                    Style::default().fg(THEME.text_dim),
+                    Style::default().fg(theme.text_dim),
                 ),
-                Span::styled(&v.text, Style::default().fg(THEME.text)),
+                Span::styled(&v.text, Style::default().fg(theme.text)),
             ])
         })
         .collect();
@@ -69,7 +69,7 @@ pub fn render_verse_card(frame: &mut Frame, area: Rect, verses: &[Verse]) {
     // Translation badge
     let badge = Paragraph::new(Line::from(vec![Span::styled(
         format!(" {} ", first.translation),
-        Style::default().fg(THEME.text_muted),
+        Style::default().fg(theme.text_muted),
     )]))
     .alignment(Alignment::Right);
     frame.render_widget(badge, chunks[2]);

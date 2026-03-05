@@ -1,6 +1,6 @@
 use crate::api::types::Chapter;
 use crate::data::books::BOOKS;
-use crate::ui::theme::THEME;
+use crate::ui::theme::{Theme, ThemeName};
 use ratatui::{
     layout::{Alignment, Constraint, Flex, Layout, Rect},
     style::{Modifier, Style, Stylize},
@@ -78,6 +78,7 @@ impl BrowserState {
                 Panel::Chapters => 1,
                 Panel::Scripture => 2,
             },
+            ..Default::default()
         }
     }
 
@@ -185,17 +186,19 @@ pub fn render_browser(
     area: Rect,
     state: &mut BrowserState,
     quit_pending: bool,
+    theme: &Theme,
+    theme_name: ThemeName,
 ) {
     // Outer border
     let outer_block = Block::default()
         .title(Line::from(vec![
-            Span::styled(" christ", Style::default().fg(THEME.accent).bold()),
-            Span::styled("-cli ", Style::default().fg(THEME.text_dim)),
+            Span::styled(" christ", Style::default().fg(theme.accent).bold()),
+            Span::styled("-cli ", Style::default().fg(theme.text_dim)),
         ]))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(THEME.border))
-        .style(Style::default().bg(THEME.bg));
+        .border_style(Style::default().fg(theme.border))
+        .style(Style::default().bg(theme.bg));
 
     let inner = outer_block.inner(area);
     frame.render_widget(outer_block, area);
@@ -215,39 +218,39 @@ pub fn render_browser(
     ])
     .split(main_and_status[0]);
 
-    render_books_panel(frame, panels[0], state);
-    render_chapters_panel(frame, panels[1], state);
-    render_scripture_panel(frame, panels[2], state);
-    render_status_bar(frame, main_and_status[1]);
+    render_books_panel(frame, panels[0], state, theme);
+    render_chapters_panel(frame, panels[1], state, theme);
+    render_scripture_panel(frame, panels[2], state, theme);
+    render_status_bar(frame, main_and_status[1], theme, theme_name);
 
     // Quit confirmation popup
     if quit_pending {
-        render_quit_popup(frame, area);
+        render_quit_popup(frame, area, theme);
     }
 }
 
-fn panel_border_style(active: bool) -> Style {
+fn panel_border_style(active: bool, theme: &Theme) -> Style {
     if active {
-        Style::default().fg(THEME.border_active)
+        Style::default().fg(theme.border_active)
     } else {
-        Style::default().fg(THEME.border)
+        Style::default().fg(theme.border)
     }
 }
 
-fn render_books_panel(frame: &mut Frame, area: Rect, state: &mut BrowserState) {
+fn render_books_panel(frame: &mut Frame, area: Rect, state: &mut BrowserState, theme: &Theme) {
     let is_active = state.active_panel == Panel::Books;
     let block = Block::default()
         .title(Span::styled(
             " Books ",
             Style::default()
-                .fg(if is_active { THEME.accent } else { THEME.text_dim })
+                .fg(if is_active { theme.accent } else { theme.text_dim })
                 .bold(),
         ))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(panel_border_style(is_active))
+        .border_style(panel_border_style(is_active, theme))
         .padding(Padding::horizontal(1))
-        .style(Style::default().bg(THEME.surface));
+        .style(Style::default().bg(theme.surface));
 
     let items: Vec<ListItem> = BOOKS
         .iter()
@@ -255,11 +258,11 @@ fn render_books_panel(frame: &mut Frame, area: Rect, state: &mut BrowserState) {
         .map(|(i, book)| {
             let style = if Some(i) == state.book_list.selected() {
                 Style::default()
-                    .fg(THEME.accent)
-                    .bg(THEME.highlight_bg)
+                    .fg(theme.accent)
+                    .bg(theme.highlight_bg)
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(THEME.text)
+                Style::default().fg(theme.text)
             };
             ListItem::new(Span::styled(book.name, style))
         })
@@ -270,20 +273,20 @@ fn render_books_panel(frame: &mut Frame, area: Rect, state: &mut BrowserState) {
     frame.render_stateful_widget(list, area, &mut state.book_list);
 }
 
-fn render_chapters_panel(frame: &mut Frame, area: Rect, state: &mut BrowserState) {
+fn render_chapters_panel(frame: &mut Frame, area: Rect, state: &mut BrowserState, theme: &Theme) {
     let is_active = state.active_panel == Panel::Chapters;
     let block = Block::default()
         .title(Span::styled(
             " Ch ",
             Style::default()
-                .fg(if is_active { THEME.accent } else { THEME.text_dim })
+                .fg(if is_active { theme.accent } else { theme.text_dim })
                 .bold(),
         ))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(panel_border_style(is_active))
+        .border_style(panel_border_style(is_active, theme))
         .padding(Padding::horizontal(1))
-        .style(Style::default().bg(THEME.surface));
+        .style(Style::default().bg(theme.surface));
 
     let chapter_count = state.selected_book_chapters();
     let items: Vec<ListItem> = (1..=chapter_count)
@@ -291,11 +294,11 @@ fn render_chapters_panel(frame: &mut Frame, area: Rect, state: &mut BrowserState
             let is_selected = Some(ch as usize - 1) == state.chapter_list.selected();
             let style = if is_selected {
                 Style::default()
-                    .fg(THEME.accent)
-                    .bg(THEME.highlight_bg)
+                    .fg(theme.accent)
+                    .bg(theme.highlight_bg)
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(THEME.text)
+                Style::default().fg(theme.text)
             };
             ListItem::new(Span::styled(format!("{}", ch), style))
         })
@@ -306,7 +309,7 @@ fn render_chapters_panel(frame: &mut Frame, area: Rect, state: &mut BrowserState
     frame.render_stateful_widget(list, area, &mut state.chapter_list);
 }
 
-fn render_scripture_panel(frame: &mut Frame, area: Rect, state: &mut BrowserState) {
+fn render_scripture_panel(frame: &mut Frame, area: Rect, state: &mut BrowserState, theme: &Theme) {
     let is_active = state.active_panel == Panel::Scripture;
 
     let title = if let Some(ref ch) = state.current_chapter {
@@ -319,19 +322,19 @@ fn render_scripture_panel(frame: &mut Frame, area: Rect, state: &mut BrowserStat
         .title(Span::styled(
             title,
             Style::default()
-                .fg(if is_active { THEME.accent } else { THEME.text_dim })
+                .fg(if is_active { theme.accent } else { theme.text_dim })
                 .bold(),
         ))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(panel_border_style(is_active))
+        .border_style(panel_border_style(is_active, theme))
         .padding(Padding::new(2, 2, 1, 1))
-        .style(Style::default().bg(THEME.surface));
+        .style(Style::default().bg(theme.surface));
 
     if state.loading {
         let loading = Paragraph::new(Line::from(Span::styled(
             "Loading...",
-            Style::default().fg(THEME.text_dim),
+            Style::default().fg(theme.text_dim),
         )))
         .block(block)
         .alignment(Alignment::Center);
@@ -347,9 +350,9 @@ fn render_scripture_panel(frame: &mut Frame, area: Rect, state: &mut BrowserStat
                 let verse_line = Line::from(vec![
                     Span::styled(
                         format!(" {} ", v.verse),
-                        Style::default().fg(THEME.text_muted),
+                        Style::default().fg(theme.text_muted),
                     ),
-                    Span::styled(&v.text, Style::default().fg(THEME.text)),
+                    Span::styled(&v.text, Style::default().fg(theme.text)),
                 ]);
                 vec![verse_line, Line::default()]
             })
@@ -398,7 +401,7 @@ fn render_scripture_panel(frame: &mut Frame, area: Rect, state: &mut BrowserStat
             let mut scrollbar_state = ScrollbarState::new(max_scroll)
                 .position(state.scripture_scroll as usize);
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-                .style(Style::default().fg(THEME.border));
+                .style(Style::default().fg(theme.border));
             frame.render_stateful_widget(scrollbar, inner, &mut scrollbar_state);
         }
     } else {
@@ -407,12 +410,12 @@ fn render_scripture_panel(frame: &mut Frame, area: Rect, state: &mut BrowserStat
             Line::default(),
             Line::from(Span::styled(
                 "Select a book and chapter to begin reading",
-                Style::default().fg(THEME.text_dim),
+                Style::default().fg(theme.text_dim),
             )),
             Line::default(),
             Line::from(Span::styled(
                 "Use arrow keys to navigate, Enter to select",
-                Style::default().fg(THEME.text_muted),
+                Style::default().fg(theme.text_muted),
             )),
         ])
         .block(block)
@@ -421,11 +424,12 @@ fn render_scripture_panel(frame: &mut Frame, area: Rect, state: &mut BrowserStat
     }
 }
 
-fn render_status_bar(frame: &mut Frame, area: Rect) {
+fn render_status_bar(frame: &mut Frame, area: Rect, theme: &Theme, theme_name: ThemeName) {
     let keybinds = vec![
         ("\u{2190}\u{2192}", "panels"),
         ("\u{2191}\u{2193}", "navigate"),
         ("Enter", "select"),
+        ("t", theme_name.label()),
         ("qq", "quit"),
     ];
 
@@ -435,22 +439,22 @@ fn render_status_bar(frame: &mut Frame, area: Rect) {
             vec![
                 Span::styled(
                     format!(" {} ", key),
-                    Style::default().fg(THEME.accent_soft).bold(),
+                    Style::default().fg(theme.accent_soft).bold(),
                 ),
                 Span::styled(
                     format!("{} ", desc),
-                    Style::default().fg(THEME.text_muted),
+                    Style::default().fg(theme.text_muted),
                 ),
                 Span::styled("  ", Style::default()),
             ]
         })
         .collect();
 
-    let bar = Paragraph::new(Line::from(spans)).style(Style::default().bg(THEME.bg));
+    let bar = Paragraph::new(Line::from(spans)).style(Style::default().bg(theme.bg));
     frame.render_widget(bar, area);
 }
 
-fn render_quit_popup(frame: &mut Frame, area: Rect) {
+fn render_quit_popup(frame: &mut Frame, area: Rect, theme: &Theme) {
     let popup_width = 32u16;
     let popup_height = 3u16;
 
@@ -465,17 +469,17 @@ fn render_quit_popup(frame: &mut Frame, area: Rect) {
     frame.render_widget(Clear, popup_area);
 
     let popup = Paragraph::new(Line::from(vec![
-        Span::styled("  Press ", Style::default().fg(THEME.text_dim)),
-        Span::styled("q", Style::default().fg(THEME.accent).bold()),
-        Span::styled(" again to quit  ", Style::default().fg(THEME.text_dim)),
+        Span::styled("  Press ", Style::default().fg(theme.text_dim)),
+        Span::styled("q", Style::default().fg(theme.accent).bold()),
+        Span::styled(" again to quit  ", Style::default().fg(theme.text_dim)),
     ]))
     .alignment(Alignment::Center)
     .block(
         Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(THEME.border_active))
-            .style(Style::default().bg(THEME.surface)),
+            .border_style(Style::default().fg(theme.border_active))
+            .style(Style::default().bg(theme.surface)),
     );
 
     frame.render_widget(popup, popup_area);

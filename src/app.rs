@@ -2,6 +2,7 @@ use crate::api::Resolver;
 use crate::store::state as session;
 use crate::ui::banner::{self, BannerState};
 use crate::ui::browser::{self, BrowserState};
+use crate::ui::theme::{self, ThemeName};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{DefaultTerminal, Frame};
 use std::time::{Duration, Instant};
@@ -16,6 +17,7 @@ pub struct App {
     resolver: Resolver,
     should_quit: bool,
     quit_pending: Option<Instant>,
+    theme_name: ThemeName,
 }
 
 impl App {
@@ -31,6 +33,7 @@ impl App {
             resolver: Resolver::new(),
             should_quit: false,
             quit_pending: None,
+            theme_name: ThemeName::default(),
         }
     }
 
@@ -38,6 +41,7 @@ impl App {
         // Load saved session state
         let saved = session::load();
         let has_saved_session = saved.book_index > 0 || saved.chapter > 1;
+        self.theme_name = saved.theme;
 
         // Load the chapter from the saved session (or Genesis 1 for first run)
         let book_name = if has_saved_session {
@@ -103,7 +107,9 @@ impl App {
 
         // Save session state on quit
         if let AppMode::Browser(ref state) = self.mode {
-            session::save(&state.snapshot());
+            let mut snapshot = state.snapshot();
+            snapshot.theme = self.theme_name;
+            session::save(&snapshot);
         }
 
         Ok(())
@@ -111,6 +117,7 @@ impl App {
 
     fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
+        let theme = theme::get_theme(self.theme_name);
 
         if let Some(t) = self.quit_pending {
             if t.elapsed() > Duration::from_secs(2) {
@@ -120,10 +127,17 @@ impl App {
 
         match &mut self.mode {
             AppMode::Banner(state) => {
-                banner::render_banner(frame, area, state);
+                banner::render_banner(frame, area, state, &theme);
             }
             AppMode::Browser(state) => {
-                browser::render_browser(frame, area, state, self.quit_pending.is_some());
+                browser::render_browser(
+                    frame,
+                    area,
+                    state,
+                    self.quit_pending.is_some(),
+                    &theme,
+                    self.theme_name,
+                );
             }
         }
     }
@@ -145,6 +159,9 @@ impl App {
                 self.quit_pending = None;
 
                 match key {
+                    KeyCode::Char('t') => {
+                        self.theme_name = self.theme_name.next();
+                    }
                     KeyCode::Left => {
                         state.prev_panel();
                     }

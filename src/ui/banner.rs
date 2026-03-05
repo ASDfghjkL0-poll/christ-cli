@@ -1,4 +1,4 @@
-use crate::ui::theme::THEME;
+use crate::ui::theme::Theme;
 use ratatui::{
     layout::{Alignment, Constraint, Flex, Layout, Rect},
     style::{Style, Stylize},
@@ -57,8 +57,8 @@ impl BannerState {
     }
 }
 
-pub fn render_banner(frame: &mut Frame, area: Rect, state: &BannerState) {
-    let block = Block::default().style(Style::default().bg(THEME.bg));
+pub fn render_banner(frame: &mut Frame, area: Rect, state: &BannerState, theme: &Theme) {
+    let block = Block::default().style(Style::default().bg(theme.bg));
     frame.render_widget(block, area);
 
     // Center everything vertically
@@ -84,7 +84,7 @@ pub fn render_banner(frame: &mut Frame, area: Rect, state: &BannerState) {
         } else {
             1.0
         };
-        let cross_color = interpolate_color(THEME.bg, THEME.accent_soft, opacity);
+        let cross_color = interpolate_color(theme.bg, theme.accent_soft, opacity);
 
         let cross_lines: Vec<Line> = CROSS_ART
             .iter()
@@ -101,7 +101,7 @@ pub fn render_banner(frame: &mut Frame, area: Rect, state: &BannerState) {
         } else {
             1.0
         };
-        let title_color = interpolate_color(THEME.bg, THEME.accent, opacity);
+        let title_color = interpolate_color(theme.bg, theme.accent, opacity);
 
         let title_lines: Vec<Line> = TITLE_ART
             .iter()
@@ -124,14 +124,14 @@ pub fn render_banner(frame: &mut Frame, area: Rect, state: &BannerState) {
 
         let tag = Paragraph::new(Line::from(Span::styled(
             visible,
-            Style::default().fg(THEME.text_dim),
+            Style::default().fg(theme.text_dim),
         )))
         .alignment(Alignment::Center);
         frame.render_widget(tag, chunks[4]);
     }
 }
 
-fn interpolate_color(from: ratatui::style::Color, to: ratatui::style::Color, t: f32) -> ratatui::style::Color {
+pub fn interpolate_color(from: ratatui::style::Color, to: ratatui::style::Color, t: f32) -> ratatui::style::Color {
     match (from, to) {
         (
             ratatui::style::Color::Rgb(r1, g1, b1),
