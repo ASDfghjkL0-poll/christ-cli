@@ -126,6 +126,6 @@ jobs:
           node -e "const p=require('./package.json'); p.version='$VERSION'; require('fs').writeFileSync('package.json', JSON.stringify(p,null,2))"
 
       - name: Publish
-        run: cd npm-pkg && npm publish
+        run: cd npm-pkg && npm publish || echo "Version already published, skipping"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
