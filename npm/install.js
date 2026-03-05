@@ -30,25 +30,9 @@ function getPlatform() {
   return { target, isWindows: platform === "win32" };
 }
 
-function getLatestVersion() {
-  return new Promise((resolve, reject) => {
-    https.get(
-      `https://api.github.com/repos/${REPO}/releases/latest`,
-      { headers: { "User-Agent": "christ-cli-npm" } },
-      (res) => {
-        let data = "";
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => {
-          try {
-            const json = JSON.parse(data);
-            resolve(json.tag_name.replace("v", ""));
-          } catch (e) {
-            reject(e);
-          }
-        });
-      }
-    ).on("error", reject);
-  });
+function getVersion() {
+  const pkg = require(path.join(__dirname, "package.json"));
+  return pkg.version;
 }
 
 function download(url, dest) {
@@ -74,7 +58,7 @@ function download(url, dest) {
 
 async function main() {
   const { target, isWindows } = getPlatform();
-  const version = await getLatestVersion();
+  const version = getVersion();
   const ext = isWindows ? "zip" : "tar.gz";
   const url = `https://github.com/${REPO}/releases/download/v${version}/${BINARY}-${target}.${ext}`;
 
