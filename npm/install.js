@@ -54,7 +54,6 @@ function download(url, dest) {
 
         res.on("data", (chunk) => {
           downloaded += chunk.length;
-          file.write(chunk);
           if (total > 0) {
             const pct = Math.round((downloaded / total) * 100);
             const mb = (downloaded / 1024 / 1024).toFixed(1);
@@ -62,15 +61,17 @@ function download(url, dest) {
             const barLen = 24;
             const filled = Math.round((downloaded / total) * barLen);
             const bar = "\u2588".repeat(filled) + "\u2591".repeat(barLen - filled);
-            process.stderr.write(`\r  [${bar}] ${mb}MB / ${totalMb}MB  ${pct}%`);
+            process.stderr.write(`\r  [${bar}] ${mb} / ${totalMb} MB  ${pct}%`);
           }
         });
 
-        res.on("end", () => {
-          file.end();
+        res.pipe(file);
+        file.on("finish", () => {
+          file.close();
           if (total > 0) process.stderr.write("\n");
           resolve();
         });
+        file.on("error", reject);
       }).on("error", reject);
     };
     follow(url);
