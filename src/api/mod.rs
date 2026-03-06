@@ -1,7 +1,8 @@
 pub mod bolls;
 pub mod types;
 
-use crate::data::kjv;
+use crate::data::{books, kjv};
+use crate::store::cache;
 use types::{Chapter, SearchResult, Verse};
 
 pub struct Resolver {
@@ -29,6 +30,15 @@ impl Resolver {
             }
         }
 
+        // Try disk cache
+        if let Some(book_info) = books::normalize_book(book) {
+            if let Some(ch) = cache::load_chapter(translation, book_info.bolls_id, chapter) {
+                if let Some(v) = ch.verses.into_iter().find(|v| v.verse == verse) {
+                    return Ok(v);
+                }
+            }
+        }
+
         // Try Bolls API
         match self.bolls.get_verse(book, chapter, verse, translation).await {
             Ok(v) => Ok(v),
@@ -49,9 +59,21 @@ impl Resolver {
             }
         }
 
-        // Try Bolls API
+        // Try disk cache
+        if let Some(book_info) = books::normalize_book(book) {
+            if let Some(c) = cache::load_chapter(translation, book_info.bolls_id, chapter) {
+                return Ok(c);
+            }
+        }
+
+        // Fetch from Bolls API and cache the result
         match self.bolls.get_chapter(book, chapter, translation).await {
-            Ok(c) => Ok(c),
+            Ok(c) => {
+                if let Some(book_info) = books::normalize_book(book) {
+                    cache::save_chapter(translation, book_info.bolls_id, &c);
+                }
+                Ok(c)
+            }
             Err(e) => Err(format!("Failed to fetch chapter: {}", e)),
         }
     }
@@ -72,7 +94,7 @@ impl Resolver {
             }
         }
 
-        // Try Bolls API
+        // Try Bolls API (caching happens at chapter level via get_chapter)
         match self
             .bolls
             .get_verse_range(book, chapter, verse_start, verse_end, translation)
@@ -88,9 +110,14 @@ impl Resolver {
         query: &str,
         translation: &str,
     ) -> Result<Vec<SearchResult>, String> {
-        // For KJV, use bundled data (instant, clean text, no Strong's numbers)
+        // For KJV, use bundled data
         if translation.eq_ignore_ascii_case("KJV") {
             return Ok(kjv::search(query));
+        }
+
+        // For fully cached translations, search on disk
+        if cache::is_fully_cached(translation) {
+            return Ok(cache::search(translation, query));
         }
 
         // For other translations, use Bolls API
@@ -101,7 +128,19 @@ impl Resolver {
     }
 
     pub async fn get_book_names(&self, translation: &str) -> Result<Vec<String>, String> {
-        self.bolls.get_book_names(translation).await
+        // Try disk cache first
+        if let Some(names) = cache::load_book_names(translation) {
+            return Ok(names);
+        }
+
+        // Fetch and cache
+        match self.bolls.get_book_names(translation).await {
+            Ok(names) => {
+                cache::save_book_names(translation, &names);
+                Ok(names)
+            }
+            Err(e) => Err(e),
+        }
     }
 
     pub async fn get_random_verse(&self, translation: &str) -> Result<Verse, String> {

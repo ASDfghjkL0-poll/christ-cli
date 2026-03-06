@@ -1,6 +1,8 @@
 use crate::api::types::{Chapter, SearchResult};
 use crate::data::books::BOOKS;
+use crate::store::cache;
 use crate::ui::theme::{Theme, ThemeName};
+use std::sync::atomic::Ordering;
 use ratatui::{
     layout::{Alignment, Constraint, Flex, Layout, Rect},
     style::{Modifier, Style, Stylize},
@@ -96,6 +98,8 @@ pub struct BrowserState {
     /// Localized book names for the current translation (indexed by BOOKS order).
     /// Empty vec means use English names (KJV / fallback).
     pub localized_books: Vec<String>,
+    /// Background download handle for caching a translation.
+    pub download: Option<cache::DownloadHandle>,
 }
 
 impl BrowserState {
@@ -119,6 +123,7 @@ impl BrowserState {
             translation_picker: false,
             translation_list: ListState::default(),
             localized_books: Vec::new(),
+            download: None,
         }
     }
 
@@ -157,6 +162,27 @@ impl BrowserState {
             translation: self.translation.clone(),
             ..Default::default()
         }
+    }
+
+    /// Returns true if the current translation is available offline (KJV or fully cached).
+    pub fn is_offline(&self) -> bool {
+        cache::is_fully_cached(&self.translation)
+    }
+
+    /// Check if download is done and clean up the handle.
+    pub fn check_download(&mut self) {
+        if let Some(ref dl) = self.download {
+            if dl.done.load(Ordering::Relaxed) {
+                self.download = None;
+            }
+        }
+    }
+
+    /// Get download progress as (completed, total) or None.
+    pub fn download_progress(&self) -> Option<(usize, usize)> {
+        self.download.as_ref().map(|dl| {
+            (dl.completed.load(Ordering::Relaxed), dl.total)
+        })
     }
 
     /// Open translation picker, selecting the current translation.
@@ -363,14 +389,15 @@ pub fn render_browser(
     render_chapters_panel(frame, panels[1], state, theme);
 
     let translation = state.translation.clone();
+    let dl = state.download_progress();
 
     if has_search_input {
         render_search_results_panel(frame, panels[2], state, theme);
         render_search_input(frame, main_and_status[1], state, theme);
-        render_status_bar(frame, main_and_status[2], theme, theme_name, &translation);
+        render_status_bar(frame, main_and_status[2], theme, theme_name, &translation, dl);
     } else {
         render_scripture_panel(frame, panels[2], state, theme);
-        render_status_bar(frame, main_and_status[1], theme, theme_name, &translation);
+        render_status_bar(frame, main_and_status[1], theme, theme_name, &translation, dl);
     }
 
     // Translation picker popup
@@ -704,16 +731,31 @@ fn render_search_input(frame: &mut Frame, area: Rect, state: &BrowserState, them
         .style(Style::default().bg(theme.surface));
 
     let cursor = "\u{2588}";
-    let input = Paragraph::new(Line::from(vec![
+    let mut spans = vec![
         Span::styled(query, Style::default().fg(theme.text)),
         Span::styled(cursor, Style::default().fg(theme.accent_soft)),
-    ]))
-    .block(block);
+    ];
 
+    // Show hint for online translations
+    if !state.is_offline() && query.is_empty() {
+        spans.push(Span::styled(
+            " Enter to search",
+            Style::default().fg(theme.text_dim),
+        ));
+    }
+
+    let input = Paragraph::new(Line::from(spans)).block(block);
     frame.render_widget(input, area);
 }
 
-fn render_status_bar(frame: &mut Frame, area: Rect, theme: &Theme, theme_name: ThemeName, translation: &str) {
+fn render_status_bar(
+    frame: &mut Frame,
+    area: Rect,
+    theme: &Theme,
+    theme_name: ThemeName,
+    translation: &str,
+    download_progress: Option<(usize, usize)>,
+) {
     let keybinds = vec![
         ("\u{2190}\u{2192}/hl", "panels"),
         ("\u{2191}\u{2193}/jk", "navigate"),
@@ -724,7 +766,7 @@ fn render_status_bar(frame: &mut Frame, area: Rect, theme: &Theme, theme_name: T
         ("qq", "quit"),
     ];
 
-    let spans: Vec<Span> = keybinds
+    let mut spans: Vec<Span> = keybinds
         .iter()
         .flat_map(|(key, desc)| {
             vec![
@@ -740,6 +782,18 @@ fn render_status_bar(frame: &mut Frame, area: Rect, theme: &Theme, theme_name: T
             ]
         })
         .collect();
+
+    if let Some((completed, total)) = download_progress {
+        let pct = if total > 0 {
+            (completed * 100) / total
+        } else {
+            0
+        };
+        spans.push(Span::styled(
+            format!(" Caching {}%", pct),
+            Style::default().fg(theme.accent).bold(),
+        ));
+    }
 
     let bar = Paragraph::new(Line::from(spans)).style(Style::default().bg(theme.bg));
     frame.render_widget(bar, area);

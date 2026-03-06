@@ -1,12 +1,13 @@
 use crate::api::Resolver;
 use crate::data::kjv;
-use crate::store::state as session;
+use crate::store::{cache, state as session};
 use crate::ui::banner::{self, BannerState};
 use crate::ui::browser::{self, BrowserState, SearchMode, TRANSLATIONS};
 use crate::ui::theme::{self, ThemeName};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::widgets::ListState;
 use ratatui::{DefaultTerminal, Frame};
+use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 enum AppMode {
@@ -87,7 +88,15 @@ impl App {
 
         let mut pending_initial = Some((initial_chapter, saved, localized_books));
 
+        // Start background cache download for non-KJV translations
+        self.start_cache_download();
+
         while !self.should_quit {
+            // Check if background download completed
+            if let AppMode::Browser(ref mut state) = self.mode {
+                state.check_download();
+            }
+
             terminal.draw(|frame| self.draw(frame))?;
 
             let tick_rate = match &self.mode {
@@ -116,13 +125,18 @@ impl App {
                         }
                         pending_initial = None;
                         self.mode = AppMode::Browser(browser);
+                        // Start cache download after banner transition
+                        self.start_cache_download();
                     }
                 }
             }
         }
 
-        // Save session state on quit
+        // Cancel any active download and save session state on quit
         if let AppMode::Browser(ref state) = self.mode {
+            if let Some(ref dl) = state.download {
+                dl.cancel.store(true, Ordering::Relaxed);
+            }
             let mut snapshot = state.snapshot();
             snapshot.theme = self.theme_name;
             session::save(&snapshot);
@@ -174,13 +188,13 @@ impl App {
                             if let SearchMode::Active { query, .. } = &mut state.search {
                                 query.pop();
                             }
-                            self.live_search();
+                            self.live_search_if_offline().await;
                         }
                         KeyCode::Char(c) => {
                             if let SearchMode::Active { query, .. } = &mut state.search {
                                 query.push(c);
                             }
-                            self.live_search();
+                            self.live_search_if_offline().await;
                         }
                         KeyCode::Up => {
                             if let SearchMode::Active { list_state, .. } = &mut state.search {
@@ -209,6 +223,9 @@ impl App {
                             if let Some((book, chapter)) = target {
                                 state.jump_to_result(&book, chapter);
                                 self.load_chapter().await;
+                            } else {
+                                // No result selected — trigger search (for online translations)
+                                self.live_search().await;
                             }
                         }
                         _ => {}
@@ -239,6 +256,7 @@ impl App {
                             if changed {
                                 self.load_book_names().await;
                                 self.load_chapter().await;
+                                self.start_cache_download();
                             }
                         }
                         _ => {}
@@ -298,25 +316,93 @@ impl App {
         }
     }
 
-    /// Run search instantly using bundled KJV data and update results in-place.
-    fn live_search(&mut self) {
+    /// Start background download to cache the current translation.
+    fn start_cache_download(&mut self) {
         if let AppMode::Browser(ref mut state) = self.mode {
-            if let SearchMode::Active {
-                query,
-                results,
-                list_state,
-            } = &mut state.search
-            {
-                if query.len() >= 3 {
-                    *results = kjv::search(query);
+            let translation = &state.translation;
+
+            // KJV is bundled, no need to download
+            if translation.eq_ignore_ascii_case("KJV") {
+                return;
+            }
+
+            // Already fully cached
+            if cache::is_fully_cached(translation) {
+                return;
+            }
+
+            // Cancel any existing download
+            if let Some(ref dl) = state.download {
+                dl.cancel.store(true, Ordering::Relaxed);
+            }
+
+            state.download = Some(cache::spawn_download(translation));
+        }
+    }
+
+    /// Live search only for offline translations (KJV bundled or fully cached).
+    /// For online translations, this is a no-op — user must press Enter.
+    async fn live_search_if_offline(&mut self) {
+        let is_offline = match &self.mode {
+            AppMode::Browser(state) => state.is_offline(),
+            _ => return,
+        };
+
+        if is_offline {
+            self.live_search().await;
+        } else {
+            // Clear results when query is too short for online translations
+            if let AppMode::Browser(ref mut state) = self.mode {
+                if let SearchMode::Active { query, results, list_state } = &mut state.search {
+                    if query.len() < 3 {
+                        results.clear();
+                        list_state.select(None);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Run search using bundled KJV (instant), cached data, or Bolls API (async).
+    async fn live_search(&mut self) {
+        // Extract query and translation without holding a borrow on self
+        let (query, translation) = match &self.mode {
+            AppMode::Browser(state) => match &state.search {
+                SearchMode::Active { query, .. } if query.len() >= 3 => {
+                    (query.clone(), state.translation.clone())
+                }
+                SearchMode::Active { .. } => {
+                    // Too short — clear results
+                    if let AppMode::Browser(ref mut state) = self.mode {
+                        if let SearchMode::Active { results, list_state, .. } = &mut state.search {
+                            results.clear();
+                            list_state.select(None);
+                        }
+                    }
+                    return;
+                }
+                _ => return,
+            },
+            _ => return,
+        };
+
+        // Search: instant for KJV, API for others
+        let search_results = if translation.eq_ignore_ascii_case("KJV") {
+            kjv::search(&query)
+        } else {
+            self.resolver.search(&query, &translation).await.unwrap_or_default()
+        };
+
+        // Update results (only if query hasn't changed during async search)
+        if let AppMode::Browser(ref mut state) = self.mode {
+            if let SearchMode::Active { query: current_query, results, list_state } = &mut state.search {
+                if *current_query == query {
+                    *results = search_results;
                     if !results.is_empty() {
                         list_state.select(Some(0));
                     } else {
                         list_state.select(None);
                     }
-                } else {
-                    results.clear();
-                    list_state.select(None);
                 }
             }
         }

@@ -237,7 +237,7 @@ impl BollsProvider {
 }
 
 /// Strip HTML tags and Strong's concordance numbers (<S>1234</S>) from Bolls API responses.
-fn clean_html(text: &str) -> String {
+pub fn clean_html(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
     let mut in_tag = false;
     let mut in_strongs = false;
