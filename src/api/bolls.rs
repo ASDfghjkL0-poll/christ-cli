@@ -1,29 +1,10 @@
 use crate::api::types::{Chapter, SearchResult, Verse};
 use crate::data::books;
-use serde::Deserialize;
 
 const BASE_URL: &str = "https://bolls.life";
 
 pub struct BollsProvider {
     client: reqwest::Client,
-}
-
-#[derive(Deserialize)]
-struct BollsBook {
-    bookid: u32,
-    name: String,
-}
-
-#[derive(Deserialize)]
-struct BollsSearchResult {
-    #[serde(default)]
-    book: u32,
-    #[serde(default)]
-    chapter: u32,
-    #[serde(default)]
-    verse: u32,
-    #[serde(default)]
-    text: String,
 }
 
 impl BollsProvider {
@@ -42,6 +23,40 @@ impl BollsProvider {
         Box::leak(translation.to_uppercase().into_boxed_str())
     }
 
+    /// Fetch a URL and return the response body as a string.
+    /// Checks HTTP status and uses `.text()` instead of `.json()` to handle
+    /// encoding issues gracefully (respects Content-Type charset header).
+    async fn fetch(&self, url: &str) -> Result<String, String> {
+        let resp = self.client.get(url).send().await.map_err(|e| e.to_string())?;
+        let status = resp.status();
+        let body = resp.text().await.map_err(|e| e.to_string())?;
+        if !status.is_success() {
+            return Err(format!("API returned {}", status.as_u16()));
+        }
+        Ok(body)
+    }
+
+    /// Fetch a URL with query parameters and return the response body as a string.
+    async fn fetch_with_query(
+        &self,
+        url: &str,
+        query: &[(&str, &str)],
+    ) -> Result<String, String> {
+        let resp = self
+            .client
+            .get(url)
+            .query(query)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        let status = resp.status();
+        let body = resp.text().await.map_err(|e| e.to_string())?;
+        if !status.is_success() {
+            return Err(format!("API returned {}", status.as_u16()));
+        }
+        Ok(body)
+    }
+
     pub async fn get_verse(
         &self,
         book_name: &str,
@@ -58,15 +73,9 @@ impl BollsProvider {
             BASE_URL, trans, book.bolls_id, chapter, verse
         );
 
-        let resp: serde_json::Value = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?
-            .json()
-            .await
-            .map_err(|e| e.to_string())?;
+        let body = self.fetch(&url).await?;
+        let resp: serde_json::Value =
+            serde_json::from_str(&body).map_err(|e| format!("Invalid response: {}", e))?;
 
         let text = resp.get("text").and_then(|v| v.as_str()).unwrap_or("");
 
@@ -94,15 +103,9 @@ impl BollsProvider {
             BASE_URL, trans, book.bolls_id, chapter
         );
 
-        let resp: Vec<serde_json::Value> = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?
-            .json()
-            .await
-            .map_err(|e| e.to_string())?;
+        let body = self.fetch(&url).await?;
+        let resp: Vec<serde_json::Value> =
+            serde_json::from_str(&body).map_err(|e| format!("Invalid response: {}", e))?;
 
         let verses: Vec<Verse> = resp
             .iter()
@@ -152,33 +155,27 @@ impl BollsProvider {
         let trans = Self::translation_code(translation);
         let url = format!("{}/search/{}/", BASE_URL, trans);
 
-        let resp: Vec<BollsSearchResult> = self
-            .client
-            .get(&url)
-            .query(&[("search", query)])
-            .send()
-            .await
-            .map_err(|e| e.to_string())?
-            .json()
-            .await
-            .map_err(|e| e.to_string())?;
+        let body = self.fetch_with_query(&url, &[("search", query)]).await?;
+        let resp: Vec<serde_json::Value> =
+            serde_json::from_str(&body).map_err(|e| format!("Invalid response: {}", e))?;
 
         Ok(resp
-            .into_iter()
-            .map(|r| {
+            .iter()
+            .filter_map(|r| {
+                let book_id = r.get("book")?.as_u64()? as u32;
                 let book_name = books::BOOKS
                     .iter()
-                    .find(|b| b.bolls_id == r.book)
+                    .find(|b| b.bolls_id == book_id)
                     .map(|b| b.name.to_string())
-                    .unwrap_or_else(|| format!("Book {}", r.book));
+                    .unwrap_or_else(|| format!("Book {}", book_id));
 
-                SearchResult {
+                Some(SearchResult {
                     book: book_name,
-                    chapter: r.chapter,
-                    verse: r.verse,
-                    text: clean_html(&r.text),
+                    chapter: r.get("chapter")?.as_u64()? as u32,
+                    verse: r.get("verse")?.as_u64()? as u32,
+                    text: clean_html(r.get("text")?.as_str()?),
                     translation: translation.to_uppercase(),
-                }
+                })
             })
             .take(50)
             .collect())
@@ -188,15 +185,9 @@ impl BollsProvider {
         let trans = Self::translation_code(translation);
         let url = format!("{}/get-random-verse/{}/", BASE_URL, trans);
 
-        let resp: serde_json::Value = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?
-            .json()
-            .await
-            .map_err(|e| e.to_string())?;
+        let body = self.fetch(&url).await?;
+        let resp: serde_json::Value =
+            serde_json::from_str(&body).map_err(|e| format!("Invalid response: {}", e))?;
 
         let verse_num = resp.get("verse").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
         let text = resp.get("text").and_then(|v| v.as_str()).unwrap_or("");
@@ -216,21 +207,20 @@ impl BollsProvider {
         let trans = Self::translation_code(translation);
         let url = format!("{}/get-books/{}/", BASE_URL, trans);
 
-        let resp: Vec<BollsBook> = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?
-            .json()
-            .await
-            .map_err(|e| e.to_string())?;
+        let body = self.fetch(&url).await?;
+        let resp: Vec<serde_json::Value> =
+            serde_json::from_str(&body).map_err(|e| format!("Invalid response: {}", e))?;
 
         // Build a vec indexed by (bookid - 1), matching our BOOKS order
         let mut names = vec![String::new(); 66];
-        for b in resp {
-            if b.bookid >= 1 && b.bookid <= 66 {
-                names[(b.bookid - 1) as usize] = b.name;
+        for b in &resp {
+            if let (Some(id), Some(name)) = (
+                b.get("bookid").and_then(|v| v.as_u64()),
+                b.get("name").and_then(|v| v.as_str()),
+            ) {
+                if id >= 1 && id <= 66 {
+                    names[(id - 1) as usize] = name.to_string();
+                }
             }
         }
         Ok(names)

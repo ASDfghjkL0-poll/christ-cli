@@ -194,20 +194,24 @@ async fn download_translation(
     if load_book_names(translation).is_none() {
         let url = format!("https://bolls.life/get-books/{}/", translation);
         if let Ok(resp) = client.get(&url).send().await {
-            if let Ok(books_json) = resp.json::<Vec<serde_json::Value>>().await {
-                let mut names = vec![String::new(); 66];
-                for b in &books_json {
-                    if let (Some(id), Some(name)) = (
-                        b.get("bookid").and_then(|v| v.as_u64()),
-                        b.get("name").and_then(|v| v.as_str()),
-                    ) {
-                        if id >= 1 && id <= 66 {
-                            names[(id - 1) as usize] = name.to_string();
+            if resp.status().is_success() {
+                if let Ok(body) = resp.text().await {
+                    if let Ok(books_json) = serde_json::from_str::<Vec<serde_json::Value>>(&body) {
+                        let mut names = vec![String::new(); 66];
+                        for b in &books_json {
+                            if let (Some(id), Some(name)) = (
+                                b.get("bookid").and_then(|v| v.as_u64()),
+                                b.get("name").and_then(|v| v.as_str()),
+                            ) {
+                                if id >= 1 && id <= 66 {
+                                    names[(id - 1) as usize] = name.to_string();
+                                }
+                            }
+                        }
+                        if names.iter().any(|n| !n.is_empty()) {
+                            save_book_names(translation, &names);
                         }
                     }
-                }
-                if names.iter().any(|n| !n.is_empty()) {
-                    save_book_names(translation, &names);
                 }
             }
         }
@@ -259,7 +263,20 @@ async fn download_translation(
 
                 let mut saved = false;
                 if let Ok(resp) = client.get(&url).send().await {
-                    if let Ok(verses_raw) = resp.json::<Vec<serde_json::Value>>().await {
+                    if !resp.status().is_success() {
+                        failures.fetch_add(1, Ordering::Relaxed);
+                        progress.fetch_add(1, Ordering::Relaxed);
+                        return;
+                    }
+                    let body = match resp.text().await {
+                        Ok(b) => b,
+                        Err(_) => {
+                            failures.fetch_add(1, Ordering::Relaxed);
+                            progress.fetch_add(1, Ordering::Relaxed);
+                            return;
+                        }
+                    };
+                    if let Ok(verses_raw) = serde_json::from_str::<Vec<serde_json::Value>>(&body) {
                         let verses: Vec<Verse> = verses_raw
                             .iter()
                             .filter_map(|v| {

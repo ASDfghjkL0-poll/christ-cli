@@ -21,6 +21,7 @@ pub enum ThemeName {
     Midnight,
     Parchment,
     Gospel,
+    Terminal,
 }
 
 impl ThemeName {
@@ -29,7 +30,8 @@ impl ThemeName {
             ThemeName::Slate => ThemeName::Midnight,
             ThemeName::Midnight => ThemeName::Parchment,
             ThemeName::Parchment => ThemeName::Gospel,
-            ThemeName::Gospel => ThemeName::Slate,
+            ThemeName::Gospel => ThemeName::Terminal,
+            ThemeName::Terminal => ThemeName::Slate,
         }
     }
 
@@ -39,6 +41,7 @@ impl ThemeName {
             ThemeName::Midnight => "Midnight",
             ThemeName::Parchment => "Parchment",
             ThemeName::Gospel => "Gospel",
+            ThemeName::Terminal => "Terminal",
         }
     }
 }
@@ -55,6 +58,7 @@ pub fn get_theme(name: ThemeName) -> Theme {
         ThemeName::Midnight => MIDNIGHT,
         ThemeName::Parchment => PARCHMENT,
         ThemeName::Gospel => GOSPEL,
+        ThemeName::Terminal => TERMINAL,
     }
 }
 
@@ -116,4 +120,19 @@ const GOSPEL: Theme = Theme {
     accent_soft: Color::Rgb(75, 85, 99),  // gray-600
     highlight_bg: Color::Rgb(220, 225, 235), // blue-gray (high contrast)
     search_match: Color::Rgb(217, 119, 6),// amber-600
+};
+
+/// Terminal — transparent, uses the terminal's own background
+const TERMINAL: Theme = Theme {
+    bg: Color::Reset,
+    surface: Color::Reset,
+    border: Color::Rgb(71, 85, 105),       // slate-600
+    border_active: Color::Rgb(226, 232, 240), // slate-200
+    text: Color::Rgb(241, 245, 249),       // slate-100
+    text_dim: Color::Rgb(148, 163, 184),   // slate-400
+    text_muted: Color::Rgb(100, 116, 139), // slate-500
+    accent: Color::Rgb(255, 255, 255),     // white
+    accent_soft: Color::Rgb(203, 213, 225),// slate-300
+    highlight_bg: Color::Rgb(55, 70, 95),  // slate-700
+    search_match: Color::Rgb(251, 191, 36),// amber-400
 };
